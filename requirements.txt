@@ -14,3 +14,4 @@ python-decouple==3.8
 asgiref==3.9.0
 sqlparse==0.5.3
 python-dotenv
+pandas
