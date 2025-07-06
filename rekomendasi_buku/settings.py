@@ -16,6 +16,13 @@ DEBUG = config('DEBUG', default=False, cast=bool)
 ALLOWED_HOSTS_str = config('ALLOWED_HOSTS', default='127.0.0.1,localhost')
 ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS_str.split(',')]
 
+CSRF_TRUSTED_ORIGINS_str = config('CSRF_TRUSTED_ORIGINS', default='')
+CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in CSRF_TRUSTED_ORIGINS_str.split(',')]
+
+# Pastikan cookie hanya dikirim melalui HTTPS
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = True
+
 
 # --- Definisi Aplikasi ---
 INSTALLED_APPS = [
