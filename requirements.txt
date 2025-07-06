@@ -16,3 +16,4 @@ sqlparse==0.5.3
 python-dotenv
 pandas
 scikit-learn
+requests
