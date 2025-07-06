@@ -1,3 +1,5 @@
+import os
+from django.conf import settings
 import pandas as pd
 from django.core.paginator import Paginator
 from django.db.models import Q, Count
@@ -11,19 +13,18 @@ from .models import Book, Favorite
 from .recommendation_service import get_recommendations, full_books_df
 from .recommendation_service import get_filtered_recommendations
 
-DATASET_PATH = 'sistem/static/data/gabungan_buku.csv'
+DATASET_PATH = os.path.join(settings.BASE_DIR, 'sistem', 'static', 'data', 'gabungan_buku.csv')
 
 try:
     df = pd.read_csv(DATASET_PATH)
-    df = df.drop_duplicates(['username', 'judul']).copy()  # Gunakan .copy() setelah drop_duplicates
+    df = df.drop_duplicates(['username', 'judul']).copy()
     df['genre'] = df['genre'].str.strip()
-    df_interaksi = df[['username', 'judul', 'status']].copy()  # Gunakan .copy() di sini juga
+    df_interaksi = df[['username', 'judul', 'status']].copy()
 except FileNotFoundError:
-    # Handle the case where the file is not found gracefully
-    print(f"Error: Dataset file not found at {DATASET_PATH}. Please check the path.")
-    # In a real application, you might want to log this error and display a user-friendly message
-    df = pd.DataFrame()  # Create empty DataFrame to prevent further errors
-    df_interaksi = pd.DataFrame()  # Create empty DataFrame
+    print(f"ERROR: File dataset tidak ditemukan di: {DATASET_PATH}")
+    df = pd.DataFrame()
+    df_interaksi = pd.DataFrame()
+
 
 # Map status ke skor
 status_map = {'Borrowing': 3, 'Borrowed': 2, 'Queue': 1}
