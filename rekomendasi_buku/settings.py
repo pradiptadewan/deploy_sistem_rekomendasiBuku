@@ -1,34 +1,36 @@
-
 import os
-
+from pathlib import Path
 from decouple import config
 import dj_database_url
-from decouple import config
-from django.contrib import staticfiles
-from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-
+# --- Pengaturan Keamanan Utama ---
+# Variabel ini WAJIB diatur di Railway
 SECRET_KEY = config('SECRET_KEY')
 DEBUG = config('DEBUG', default=False, cast=bool)
-ALLOWED_HOSTS = ['*'] 
+
+# Atur variabel ALLOWED_HOSTS di Railway, pisahkan dengan koma
+# Contoh: .railway.app,domaincustom.com
+ALLOWED_HOSTS_str = config('ALLOWED_HOSTS', default='127.0.0.1,localhost')
+ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS_str.split(',')]
 
 
-# Application definition
-
+# --- Definisi Aplikasi ---
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+    'whitenoise.runserver_nostatic', # Untuk development, tapi aman ditinggal
     'django.contrib.staticfiles',
-    'sistem'
-    'whitenoise.runserver_nostatic'
+    'sistem', # Koma yang hilang sudah ditambahkan
 ]
 
+# --- Middleware ---
+# Pastikan whitenoise ada setelah SecurityMiddleware
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
@@ -38,7 +40,6 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-
 ]
 
 ROOT_URLCONF = 'rekomendasi_buku.urls'
@@ -46,8 +47,7 @@ ROOT_URLCONF = 'rekomendasi_buku.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'templates']
-        ,
+        'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -62,67 +62,43 @@ TEMPLATES = [
 WSGI_APPLICATION = 'rekomendasi_buku.wsgi.application'
 
 
-# Database
-# https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': 'rekomendasi-buku',  # Nama database Anda
-        'USER': 'postgres',           # Username database Anda  
-        'PASSWORD': 'dewan123',   # Password database Anda
-        'HOST': 'localhost',
-        'PORT': '5432',
-    }
-}
-
-import dj_database_url
-
+# --- Konfigurasi Database ---
+# Hanya gunakan blok ini. Blok database yang lama (hardcoded) dihapus.
+# Konfigurasi diambil dari variabel DATABASE_URL di Railway.
 DATABASES = {
     'default': dj_database_url.config(
-        default=config('DATABASE_URL')
+        default=config('DATABASE_URL'),
+        conn_max_age=600,
+        conn_health_checks=True,
     )
 }
 
 
-# Password validation
-# https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
-
+# --- Validasi Password ---
 AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
+    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
 
-# Internationalization
-# https://docs.djangoproject.com/en/5.2/topics/i18n/
-
+# --- Internasionalisasi ---
 LANGUAGE_CODE = 'en-us'
-
-TIME_ZONE = 'UTC'
-
+TIME_ZONE = 'Asia/Jakarta' # Disesuaikan ke zona waktu Indonesia
 USE_I18N = True
-
 USE_TZ = True
 
 
+# --- Pengaturan File Statik (CSS, JS, Gambar) ---
 STATIC_URL = '/static/'
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-# Default primary key field type
-# https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
+# --- Tipe Primary Key Default ---
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-GOOGLE_BOOKS_API_KEY = os.getenv('GOOGLE_BOOKS_API_KEY')
+# --- Pengaturan API Kustom ---
+# Gunakan config() agar konsisten
+GOOGLE_BOOKS_API_KEY = config('GOOGLE_BOOKS_API_KEY', default='')
