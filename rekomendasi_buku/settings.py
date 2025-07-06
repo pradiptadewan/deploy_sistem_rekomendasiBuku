@@ -3,14 +3,12 @@ import os
 
 from decouple import config
 import dj_database_url
-
+from decouple import config
 from django.contrib import staticfiles
-from dotenv import load_dotenv
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv()
 
 
 SECRET_KEY = config('SECRET_KEY')

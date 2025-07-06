@@ -13,3 +13,4 @@ python-decouple==3.8
 # Dependensi inti Django (sebaiknya dibiarkan eksplisit)
 asgiref==3.9.0
 sqlparse==0.5.3
+python-dotenv
