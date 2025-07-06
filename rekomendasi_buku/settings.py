@@ -24,6 +24,13 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'secret-local')
 DEBUG = os.environ.get('DEBUG', '') == '1'
 ALLOWED_HOSTS = ['*'] 
 
+CSRF_TRUSTED_ORIGINS_str = config('CSRF_TRUSTED_ORIGINS', default='')
+CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in CSRF_TRUSTED_ORIGINS_str.split(',')]
+
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = True
+
+
 
 # Application definition
 
