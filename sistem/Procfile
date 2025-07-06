@@ -1,1 +1,1 @@
-web: gunicorn rekomendasi_buku.wsgi
+web: gunicorn rekomendasi_buku.wsgi --log-file -
