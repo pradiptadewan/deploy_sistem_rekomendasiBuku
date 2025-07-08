@@ -1,300 +1,361 @@
-import pandas as pd
-from django.core.paginator import Paginator
-from django.db.models import Q, Count
-from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth import authenticate, login, logout
-from django.contrib import messages
-from django.contrib.auth.decorators import login_required
-from .recommendation_service import get_filtered_recommendations_with_strong_reasons, books_df_from_pkl, \
-    evaluate_content_based_detailed, evaluate_collaborative_detailed, evaluate_hybrid_detailed
-from .recommendation_service import get_user_history, get_collaborative_recommendations, user_item_matrix
-from .recommendation_service import full_books_df
-from .recommendation_service import get_hybrid_recommendations # Tambahkan ini di import
-from .forms import CustomUserCreationForm
-from .models import Book, Favorite
-from .recommendation_service import get_recommendations_with_strong_reasons
+{% extends 'sistem/base.html' %}
+{% load static %}
+{% block title %}Collaborative Recommendation{% endblock %}
 
+{% block navigation %}
+    {# ... Kode navigasi Anda ... #}
+{% endblock navigation %}
 
-def home(request):
-    return render(request, 'sistem/home.html')
+{% block content %}
+<main class="page-container">
+    <div class="form-container">
+        <div class="form-header">
+            <h2 class="form-title">Rekomendasi Berdasarkan Pengguna Lain</h2>
+            <p class="form-subtitle">Pilih pengguna untuk melihat riwayat baca mereka dan dapatkan rekomendasi buku berdasarkan pengguna dengan selera serupa.</p>
+        </div>
 
-def input_view(request):
-    return render(request, 'sistem/input.html')
+        <form method="POST" action="{% url 'sistem:collaborative' %}">
+            {% csrf_token %}
+            <div class="form-group">
+                <label for="username-select" class="form-label">Pilih Pengguna:</label>
+                <select name="username" id="username-select" class="form-input">
+                    <option value="">-- Pilih seorang pengguna --</option>
+                    {% for user in all_users %}
+                        <option value="{{ user }}" {% if user == selected_user %}selected{% endif %}>{{ user }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="form-button">
+                <i class="fas fa-users"></i> Tampilkan Rekomendasi
+            </button>
+        </form>
+    </div>
 
+    {% if selected_user %}
+    <div class="results-container">
+        <section class="history-section">
+            <div class="results-header" style="margin-bottom: 1.5rem;">
+                <h3 class="results-title" style="font-size: 1.75rem;">Riwayat Baca <span class="highlight">{{ selected_user }}</span></h3>
+            </div>
+            {% if history %}
+                <ul class="history-list">
+                    {% for title in history %}
+                        <li>{{ title }}</li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p style="text-align: center; color: var(--color-text-muted);">Pengguna ini belum memiliki riwayat baca.</p>
+            {% endif %}
+        </section>
 
-def register_view(request):
-    if request.user.is_authenticated:
-        return redirect('sistem:dashboard_user')
-    if request.method == 'POST':
-        form = CustomUserCreationForm(request.POST)
-        if form.is_valid():
-            form.save()
-            username = form.cleaned_data.get('username')
-            messages.success(request, f'Akun untuk {username} berhasil dibuat. Silakan login.')
-            return redirect('sistem:login')
-    else:
-        form = CustomUserCreationForm()
-    return render(request, 'sistem/register.html', {'form': form})
+        <section class="recommendations-section">
+            <div class="results-header">
+                <h2 class="results-title">Direkomendasikan Untuk Anda</h2>
+            </div>
+            <div class="card-grid">
+                {% for book in recommendations %}
+                    <div class="book-card">
+                        <figure class="book-card-figure">
+                            <img class="book-card-image" src="{{ book.image_url|default:'https://placehold.co/400x300/ffd32e/FFFFFF?text=Buku' }}" alt="Sampul buku {{ book.title }}">
+                        </figure>
+                        <div class="book-card-body">
+                            <h3 class="book-card-title">{{ book.title }}</h3>
+                            <p class="book-card-author">oleh {{ book.author }}</p>
+                            <div class="book-card-footer">
+                                <a href="{% url 'sistem:book_detail' book.id %}" class="card-button detail">Detail</a>
+                                <a href="{% if user.is_authenticated %}{% url 'sistem:add_to_favorite' book.id %}{% else %}{% url 'sistem:login' %}?next={% url 'sistem:add_to_favorite' book.id %}{% endif %}" class="card-button favorite">Favorite</a>
+                            </div>
+                        </div>
+                    </div>
+                {% empty %}
+                    <div class="no-results-wrapper">
+                        <i class="fas fa-box-open no-results-icon"></i>
+                        <h3 class="no-results-title">Rekomendasi Belum Tersedia</h3>
+                        <p class="no-results-text">Kami tidak dapat membuat rekomendasi untuk pengguna ini saat ini.</p>
+                    </div>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+    {% endif %}
+</main>
 
-def login_view(request):
-    if request.user.is_authenticated:
-        return redirect('sistem:dashboard_user')
-    if request.method == 'POST':
-        username_input = request.POST.get('username_email')
-        password_input = request.POST.get('password')
-        if not username_input or not password_input:
-            messages.error(request, 'Username dan Password tidak boleh kosong.')
-            return render(request, 'sistem/login.html')
-        user = authenticate(request, username=username_input, password=password_input)
-        if user is not None:
-            if not request.POST.get('remember_me', None):
-                request.session.set_expiry(0)
-            login(request, user)
-            return redirect('sistem:dashboard_user')
-        else:
-            messages.error(request, 'Username atau Password salah.')
-            return render(request, 'sistem/login.html')
-    return render(request, 'sistem/login.html')
+<style>
+    /* === IMPORT FONT MODERN === */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:wght@500;600;700&display=swap');
+    @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css');
 
-def logout_view(request):
-    logout(request)
-    messages.info(request, 'Anda telah berhasil logout.')
-    return redirect('sistem:login')
-
-@login_required
-def dashboard_user(request):
-    query = request.GET.get('q')
-    if query:
-        books_to_display = Book.objects.filter(
-            Q(title__icontains=query) | Q(author__icontains=query)
-        ).distinct()
-    else:
-        books_to_display = Book.objects.annotate(
-            num_favorites=Count('favorite')
-        ).order_by('-num_favorites')[:8]
-    context = {
-        'books': books_to_display,
-        'search_query': query,
-    }
-    return render(request, 'sistem/dashboard_user.html', context)
-
-def book_detail_view(request, book_id):
-    book = get_object_or_404(Book, id=book_id)
-    context = {'book': book}
-    return render(request, 'sistem/details.html', context)
-
-@login_required
-def add_to_favorite(request, book_id):
-    book = get_object_or_404(Book, id=book_id)
-    favorite, created = Favorite.objects.get_or_create(user=request.user, book=book)
-    if created:
-        messages.success(request, f"'{book.title}' telah ditambahkan ke favorit Anda!")
-    else:
-        messages.info(request, f"'{book.title}' sudah ada di daftar favorit Anda.")
-    return redirect('sistem:dashboard_user')
-
-@login_required
-def favorite_list(request):
-    favorite_books = Book.objects.filter(favorite__user=request.user)
-    context = {'favorite_books': favorite_books}
-    return render(request, 'sistem/favorite.html', context)
-
-@login_required
-def remove_from_favorite(request, book_id):
-    book = get_object_or_404(Book, id=book_id)
-    favorite_entry = Favorite.objects.filter(user=request.user, book=book)
-    if favorite_entry.exists():
-        favorite_entry.delete()
-        messages.success(request, f"'{book.title}' telah dihapus dari favorit Anda.")
-    return redirect('sistem:favorite_list')
-
-@login_required
-def all_popular_books_view(request):
-    all_books_list = Book.objects.annotate(
-        num_favorites=Count('favorite')
-    ).order_by('-num_favorites')
-    paginator = Paginator(all_books_list, 12)
-    page_number = request.GET.get('page')
-    page_obj = paginator.get_page(page_number)
-    context = {'page_obj': page_obj}
-    return render(request, 'sistem/all_popular_books.html', context)
-
-def dashboard_admin(request):
-    # Pertama, cek apakah ada pengguna yang sudah login mencoba mengakses halaman ini
-    if request.user.is_authenticated:
-        # Jika ya, langsung arahkan ke dashboard pribadi mereka
-        return redirect('sistem:dashboard_user')
-
-    # Logikanya sekarang hampir sama dengan dashboard_user
-    query = request.GET.get('q')
-
-    if query:
-        # Jika ada pencarian, filter buku
-        books_to_display = Book.objects.filter(
-            Q(title__icontains=query) | Q(author__icontains=query)
-        ).distinct()
-    else:
-        # Jika tidak ada pencarian, tampilkan 8 buku terpopuler
-        books_to_display = Book.objects.annotate(
-            num_favorites=Count('favorite')
-        ).order_by('-num_favorites')[:8]
-
-    context = {
-        'books': books_to_display,
-        'search_query': query,
-    }
-    return render(request, 'sistem/dashboard.html', context)
-
-
-def collaborative_view(request):
-    # Ambil semua username unik untuk dropdown
-    all_users = user_item_matrix.index.tolist() if user_item_matrix is not None else []
-
-    # Siapkan variabel untuk hasil
-    selected_user = None
-    history = []
-    recommendations = []
-
-    if request.method == 'POST':
-        # Ambil username yang dipilih dari form
-        selected_user = request.POST.get('username')
-        if selected_user:
-            # Panggil service untuk mendapatkan riwayat dan rekomendasi
-            history = get_user_history(selected_user)
-            recommendations = get_collaborative_recommendations(selected_user)
-
-    context = {
-        'all_users': all_users,
-        'selected_user': selected_user,
-        'history': history,
-        'recommendations': recommendations
-    }
-    return render(request, 'sistem/collaborative.html', context)
-
-
-def content_based_view(request):
-    """
-    Menangani halaman input dan output untuk Content-Based Filtering.
-    Menampilkan form dan hasil di halaman yang sama.
-    """
-    # Data yang selalu dibutuhkan untuk mengisi form
-    popular_genres = []
-    all_titles = []
-    if full_books_df is not None:
-        all_genres = full_books_df['genre'].dropna().str.split(', ').explode().str.strip().unique()
-        popular_genres = sorted([g for g in all_genres if len(g) > 2])[:12]
-        all_titles = sorted(full_books_df['judul'].unique().tolist())
-
-    # Inisialisasi variabel konteks untuk hasil
-    context = {
-        'available_genres': popular_genres,
-        'all_book_titles': all_titles,
-        'recommendation_items': None,  # Gunakan None agar template bisa cek
-        'searched_title': None,
-        'user_filters': None,
+    /* === PALET WARNA & VARIABEL DESAIN === */
+    :root {
+        --font-sans: 'Inter', sans-serif;
+        --font-serif: 'Lora', serif;
+        --color-primary: #FFCC00; /* Biru Modern */
+        --color-primary-hover: #ffd32e;
+        --color-secondary: #F59E0B; /* Aksen Kuning/Emas */
+        --color-text-base: #1F2937; /* Abu-abu Gelap (untuk teks) */
+        --color-text-muted: #6B7280; /* Abu-abu Terang */
+        --color-bg: #F9FAFB; /* Latar Belakang Halaman */
+        --color-surface: #FFFFFF; /* Warna Kartu/Formulir */
+        --color-border: #E5E7EB;
+        --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+        --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        --radius-md: 0.5rem; /* 8px */
+        --radius-lg: 0.75rem; /* 12px */
     }
 
-    if request.method == 'POST':
-        # Cek form mana yang di-submit berdasarkan nama tombol submit
-
-        # --- Form 1: Pencarian Berdasarkan Judul ---
-        if 'search_by_title' in request.POST:
-            book_title_searched = request.POST.get('book_title', '').strip()
-            if book_title_searched:
-                recommendation_list = get_recommendations_with_strong_reasons(
-                    book_title=book_title_searched
-                )
-                context['recommendation_items'] = recommendation_list
-                context['searched_title'] = book_title_searched
-
-        # --- Form 2: Pencarian Berdasarkan Filter ---
-        elif 'search_by_filter' in request.POST:
-            genres = request.POST.getlist('genres')
-            rating_str = request.POST.get('rating_min', '0')
-            rating_min = float(rating_str) if rating_str else 0.0
-            halaman_str = request.POST.get('halaman_maks')
-            halaman_maks = int(halaman_str) if halaman_str else None
-
-            recommendation_list = get_filtered_recommendations_with_strong_reasons(
-                genre_preferensi=genres,
-                rating_min=rating_min,
-                halaman_maks=halaman_maks
-            )
-            context['recommendation_items'] = recommendation_list
-            context['user_filters'] = {'genres': genres, 'rating': rating_min, 'pages': halaman_maks}
-
-    # Render template yang sama untuk GET dan POST
-    # Contex akan berisi data form dan juga data hasil (jika ada)
-    return render(request, 'sistem/content_based.html', context)
-
-
-def hybrid_view(request):
-    all_users = user_item_matrix.index.tolist() if user_item_matrix is not None else []
-
-    selected_user = None
-    recommendations = []
-
-    if request.method == 'POST':
-        selected_user = request.POST.get('username')
-        if selected_user:
-            # Panggil service hybrid yang baru
-            recommendations = get_hybrid_recommendations(selected_user)
-
-    context = {
-        'all_users': all_users,
-        'selected_user': selected_user,
-        'recommendations': recommendations
-    }
-    return render(request, 'sistem/hybrid.html', context)
-
-
-# Ganti fungsi evaluation_view yang lama dengan ini
-
-def evaluation_view(request):
-    # Pastikan variabel global dari service bisa diakses
-    from .recommendation_service import user_item_matrix, books_df_from_pkl
-
-    all_users = user_item_matrix.index.tolist() if user_item_matrix is not None else []
-    all_books = books_df_from_pkl['judul'].tolist() if books_df_from_pkl is not None else []
-
-    context = {
-        'all_users': all_users,
-        'all_books': all_books,
+    /* === RESET & BODY STYLE === */
+    body {
+        background-color: var(--color-bg);
+        font-family: var(--font-sans);
+        color: var(--color-text-base);
+        line-height: 1.6;
     }
 
-    if request.method == 'POST':
-        # Penanganan Tombol Collaborative
-        if 'evaluate_collaborative' in request.POST:
-            selected_user = request.POST.get('username')
-            if selected_user:
-                eval_data = evaluate_collaborative_detailed(selected_user)
-                context.update({
-                    'eval_type': 'collaborative',
-                    'selected_user': selected_user,
-                    'eval_data': eval_data
-                })
+    /* === LAYOUT UTAMA === */
+    .page-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 2rem 1.5rem;
+    }
 
-        # Penanganan Tombol Content-Based
-        elif 'evaluate_content' in request.POST:
-            selected_book_title = request.POST.get('book_title')
-            if selected_book_title:
-                source_book_object = get_object_or_404(Book, title=selected_book_title)
-                eval_data = evaluate_content_based_detailed(selected_book_title)
-                context.update({
-                    'eval_type': 'content_based',
-                    'source_book': source_book_object,
-                    'eval_data': eval_data
-                })
+    /* === CONTAINER FORMULIR INPUT === */
+    .form-container {
+        background-color: var(--color-surface);
+        border-radius: var(--radius-lg);
+        padding: 2.5rem;
+        margin-bottom: 3rem;
+        box-shadow: var(--shadow-md);
+        border: 1px solid var(--color-border);
+    }
+    .form-header {
+        text-align: center;
+        margin-bottom: 2.5rem;
+    }
+    .form-title {
+        font-family: var(--font-serif);
+        font-size: 2.25rem;
+        font-weight: 600;
+        color: var(--color-text-base);
+        margin: 0;
+    }
+    .form-subtitle {
+        font-size: 1.1rem;
+        color: var(--color-text-muted);
+        margin-top: 0.5rem;
+        max-width: 600px;
+        margin-left: auto;
+        margin-right: auto;
+    }
 
-        # --- BLOK BARU UNTUK HYBRID ---
-        elif 'evaluate_hybrid' in request.POST:
-            selected_user = request.POST.get('username_hybrid')  # Ambil dari form hybrid
-            if selected_user:
-                eval_data = evaluate_hybrid_detailed(selected_user)
-                context.update({
-                    'eval_type': 'hybrid',
-                    'selected_user': selected_user,
-                    'eval_data': eval_data
-                })
+    /* === ELEMEN FORMULIR === */
+    .form-section { margin-bottom: 2rem; }
+    .form-section-title {
+        font-family: var(--font-serif);
+        font-size: 1.5rem;
+        margin-bottom: 1.5rem;
+        text-align: center;
+        font-weight: 500;
+    }
+    .form-group { margin-bottom: 1.25rem; }
+    .form-label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
+    .form-input {
+        width: 100%;
+        padding: 0.75rem 1rem;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        font-size: 1rem;
+        background-color: #F9FAFB;
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .form-input:focus {
+        outline: none;
+        border-color: var(--color-primary);
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+    }
+    .form-button {
+        width: 100%;
+        padding: 0.8rem 1.5rem;
+        font-size: 1rem;
+        font-weight: 600;
+        border-radius: var(--radius-md);
+        cursor: pointer;
+        border: none;
+        background-color: var(--color-primary);
+        color: black;
+        transition: background-color 0.2s, transform 0.1s;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+    .form-button:hover {
+        background-color: var(--color-primary-hover);
+    }
+    .form-button:active {
+        transform: scale(0.98);
+    }
+    .form-divider {
+        border: 0;
+        height: 1px;
+        background-color: var(--color-border);
+        margin: 2.5rem 0;
+    }
 
-    return render(request, 'sistem/evaluasi.html', context)
+    /* === AREA HASIL REKOMENDASI === */
+    .results-container {
+        padding-top: 2rem;
+    }
+    .results-header {
+        text-align: center;
+        margin-bottom: 3rem;
+    }
+    .results-title {
+        font-family: var(--font-serif);
+        font-size: 2.5rem;
+        font-weight: 600;
+    }
+    .results-title .highlight {
+        color: var(--color-primary);
+        font-style: normal;
+    }
+
+    /* === KARTU BUKU (BOOK CARD) === */
+    .card-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        gap: 2rem;
+    }
+    .book-card {
+        background: var(--color-surface);
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        border: 1px solid var(--color-border);
+        box-shadow: var(--shadow-sm);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .book-card:hover {
+        transform: translateY(-8px);
+        box-shadow: var(--shadow-md);
+    }
+    .book-card-figure {
+        margin: 0;
+        aspect-ratio: 4 / 3;
+        overflow: hidden;
+    }
+    .book-card-image {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transition: transform 0.4s ease;
+    }
+    .book-card:hover .book-card-image {
+        transform: scale(1.05);
+    }
+    .book-card-body {
+        padding: 1.25rem;
+        text-align: left;
+        flex-grow: 1;
+        display: flex;
+        flex-direction: column;
+    }
+    .book-card-title {
+        font-family: var(--font-serif);
+        font-size: 1.2rem;
+        font-weight: 600;
+        line-height: 1.4;
+        margin: 0 0 0.25rem 0;
+        /* Batasi 2 baris teks */
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .book-card-author {
+        font-size: 0.9rem;
+        color: var(--color-text-muted);
+        margin: 0;
+        margin-bottom: 1rem;
+    }
+    .book-card-footer {
+        margin-top: auto; /* Dorong footer ke bawah */
+        display: flex;
+        gap: 0.75rem;
+    }
+    .card-button {
+        flex-grow: 1;
+        text-align: center;
+        padding: 0.6rem 1rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        border-radius: var(--radius-md);
+        text-decoration: none;
+        transition: background-color 0.2s, color 0.2s;
+    }
+    .card-button.detail {
+        background-color: var(--color-primary);
+        color: white;
+    }
+    .card-button.detail:hover { background-color: var(--color-primary-hover); }
+    .card-button.favorite {
+        background-color: transparent;
+        color: var(--color-primary);
+        border: 1px solid var(--color-primary);
+    }
+    .card-button.favorite:hover {
+        background-color: var(--color-primary);
+        color: white;
+    }
+
+    /* === PESAN SAAT HASIL TIDAK DITEMUKAN === */
+    .no-results-wrapper {
+        grid-column: 1 / -1;
+        text-align: center;
+        padding: 4rem 2rem;
+    }
+    .no-results-icon {
+        font-size: 4rem;
+        color: var(--color-primary);
+        margin-bottom: 1.5rem;
+        opacity: 0.5;
+    }
+    .no-results-title {
+        font-family: var(--font-serif);
+        font-size: 1.75rem;
+        font-weight: 600;
+        color: var(--color-text-base);
+    }
+    .no-results-text {
+        color: var(--color-text-muted);
+        max-width: 450px;
+        margin: 0.5rem auto 0 auto;
+    }
+
+    /* === KHUSUS COLLABORATIVE: DAFTAR RIWAYAT === */
+    .history-section {
+        background-color: var(--color-surface);
+        padding: 2rem;
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--color-border);
+        margin-bottom: 3rem;
+    }
+    .history-list {
+        list-style-type: none;
+        padding-left: 0;
+        columns: 2;
+        column-gap: 2rem;
+    }
+    .history-list li {
+        margin-bottom: 0.75rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+    .history-list li::before {
+        content: '📖';
+        font-size: 1rem;
+    }
+</style>
+{% endblock %}
